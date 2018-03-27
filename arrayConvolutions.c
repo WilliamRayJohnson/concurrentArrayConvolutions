@@ -10,6 +10,7 @@
 
 #define THREAD_CREATION_FAILED -1
 #define THREAD_JOIN_FAILED -2
+#define MAX_OP_SIZE 5
 
 typedef struct atomic_i {
     int value;
@@ -82,5 +83,25 @@ int main(int argc, char *argv[]) {
 void *perform_ops(void *arg) {
     Conv_Input *opsData = (Conv_Input *) arg;
     printf("Thread %d now processing %s\n", opsData->thread_id, opsData->opsFile);
+
+    FILE *fp;
+    fp = fopen(opsData->opsFile, "r");
+    char currentC;
+    char currentOp[MAX_OP_SIZE];
+    int i;
+    do {
+        i = 0;
+        do {
+            currentC = fgetc(fp);
+            currentOp[i] = currentC;
+            i++;
+        } while (currentC != '\n' && i < MAX_OP_SIZE);
+        
+        if(currentC != EOF) {
+            printf("%c\n", currentOp[0]);
+        }
+
+    } while (currentC != EOF);
+
     pthread_exit(NULL);
 }
