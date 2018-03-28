@@ -95,6 +95,7 @@ void *perform_ops(void *arg) {
     int i;
     do {
         i = 0;
+        rightOpIsIndex = false;
         /* Read in operation */
         fscanf(fp, "%d", &leftOperandi);
         fscanf(fp, "%c", &currentOp);
@@ -111,6 +112,18 @@ void *perform_ops(void *arg) {
         if(endOfLine != EOF) {
             switch(currentOp) {
                 case '+' :
+                    if(rightOpIsIndex) {
+                        pthread_mutex_lock(*(opsData->convArrayP + leftOperandi)->lock);
+                        pthread_mutex_lock(*(opsData->convArrayP + rightOperand)->lock);
+
+                        pthread_mutex_unlock(*(opsData->convArrayP + rightOperand)->lock);
+                        pthread_mutex_unlock(*(opsData->convArrayP + leftOperandi)->lock);
+                    }
+                    else {
+                        pthread_mutex_lock(*(opsData->convArrayP + leftOperandi)->lock);
+
+                        pthread_mutex_unlock(*(opsData->convArrayP + leftOperandi)->lock);
+                    }
                     printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
                     break;
                 case '-' :
