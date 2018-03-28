@@ -86,22 +86,51 @@ void *perform_ops(void *arg) {
 
     FILE *fp;
     fp = fopen(opsData->opsFile, "r");
-    char currentC;
-    char currentOp[MAX_OP_SIZE];
+    char currentOp;
+    int leftOperandi;
+    int rightOperand;
+    char endOfLine;
+    char rightOpCheck;
+    bool rightOpIsIndex = false;
     int i;
     do {
         i = 0;
-        do {
-            currentC = fgetc(fp);
-            currentOp[i] = currentC;
-            i++;
-        } while (currentC != '\n' && i < MAX_OP_SIZE);
-        
-        if(currentC != EOF) {
-            printf("%c\n", currentOp[0]);
+        /* Read in operation */
+        fscanf(fp, "%d", &leftOperandi);
+        fscanf(fp, "%c", &currentOp);
+        rightOpCheck = fgetc(fp);
+        /* Check if right operand is an index */
+        if(rightOpCheck == 'i')
+            rightOpIsIndex = true;
+        else
+            ungetc(rightOpCheck, fp);
+        fscanf(fp, "%d", &rightOperand);
+        endOfLine = fgetc(fp);
+
+        /* Atomically perform operation */
+        if(endOfLine != EOF) {
+            switch(currentOp) {
+                case '+' :
+                    printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
+                    break;
+                case '-' :
+                    printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
+                    break;
+                case '*' :
+                    printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
+                    break;
+                case '/' :
+                    printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
+                    break;
+                case '^' :
+                    printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
+                    break;
+                default :
+                    printf("Op not considered: %c\n", currentOp);
+            }
         }
 
-    } while (currentC != EOF);
+    } while (endOfLine != EOF);
 
     pthread_exit(NULL);
 }
