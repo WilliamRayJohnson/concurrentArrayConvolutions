@@ -18,12 +18,14 @@ typedef struct atomic_i {
 } Atomic_Int;
 
 typedef struct thread_input {
-    Atomic_Int **convArrayP;
     char *opsFile;
     int thread_id;
 } Conv_Input;
 
 void *perform_ops(void *arg);
+
+//Shared values for threads to access
+Atomic_Int *convArray;
 
 int main(int argc, char *argv[]) {
     if(argc>=3) {
@@ -33,12 +35,11 @@ int main(int argc, char *argv[]) {
          * and lock */
         int convArraySize;
         sscanf(argv[1], "%d", &convArraySize);
-        Atomic_Int *convArray[convArraySize];
+        convArray = (Atomic_Int *) malloc(convArraySize * sizeof(Atomic_Int));
         for (i = 0; i < convArraySize; i++) {
-            convArray[i] = (Atomic_Int *) malloc(sizeof(Atomic_Int));
-            convArray[i]->value = 0;
-            convArray[i]->lock = (pthread_mutex_t *) malloc(sizeof(pthread_mutex_t));
-            pthread_mutex_init(convArray[i]->lock, NULL);
+            convArray[i].value = 0;
+            convArray[i].lock = (pthread_mutex_t *) malloc(sizeof(pthread_mutex_t));
+            pthread_mutex_init(convArray[i].lock, NULL);
         }
 
         /* Initialize threads and run them */
@@ -46,7 +47,6 @@ int main(int argc, char *argv[]) {
         pthread_t *tid[threadCount];
         for (i = 0; i < threadCount; i++) {
             Conv_Input *thdArg = (Conv_Input *) malloc(sizeof(Conv_Input));
-            thdArg->convArrayP = convArray;
             thdArg->opsFile = argv[i + 2];
             thdArg->thread_id = i;
             tid[i] = (pthread_t *) malloc(sizeof(pthread_t));
@@ -66,9 +66,9 @@ int main(int argc, char *argv[]) {
         /* Print values of array */
         printf("Results:\n [");
         for (i = 0; i < convArraySize-1; i++) {
-            printf("%d, ", convArray[i]->value);
+            printf("%d, ", convArray[i].value);
         }
-        printf("%d]\n", convArray[i]->value);
+        printf("%d]\n", convArray[i].value);
     }
     else
         printf("Please provide the appropriate number of command line arguments\n");
@@ -113,16 +113,16 @@ void *perform_ops(void *arg) {
             switch(currentOp) {
                 case '+' :
                     if(rightOpIsIndex) {
-                        pthread_mutex_lock(*(opsData->convArrayP + leftOperandi)->lock);
-                        pthread_mutex_lock(*(opsData->convArrayP + rightOperand)->lock);
+                        pthread_mutex_lock(convArray[leftOperandi].lock);
+                        pthread_mutex_lock(convArray[rightOperand].lock);
 
-                        pthread_mutex_unlock(*(opsData->convArrayP + rightOperand)->lock);
-                        pthread_mutex_unlock(*(opsData->convArrayP + leftOperandi)->lock);
+                        pthread_mutex_unlock(convArray[rightOperand].lock);
+                        pthread_mutex_unlock(convArray[leftOperandi].lock);
                     }
                     else {
-                        pthread_mutex_lock(*(opsData->convArrayP + leftOperandi)->lock);
+                        pthread_mutex_lock(convArray[leftOperandi].lock);
 
-                        pthread_mutex_unlock(*(opsData->convArrayP + leftOperandi)->lock);
+                        pthread_mutex_unlock(convArray[leftOperandi].lock);
                     }
                     printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
                     break;
