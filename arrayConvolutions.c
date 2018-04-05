@@ -30,6 +30,9 @@ void *perform_ops(void *arg);
 //Shared values for threads to access
 Atomic_Int *convArray;
 
+//Lock to ensure atomicity when taking two locks
+pthread_mutex_t *doubleLock;
+
 int main(int argc, char *argv[]) {
     if(argc>=3) {
         int i;
@@ -47,6 +50,10 @@ int main(int argc, char *argv[]) {
             pthread_mutexattr_settype(convArray[i].attr, PTHREAD_MUTEX_RECURSIVE);
             pthread_mutex_init(convArray[i].lock, convArray[i].attr);
         }
+
+        //Initialize lock for dual locking
+        doubleLock = (pthread_mutex_t *) malloc(sizeof(pthread_mutex_t));
+        pthread_mutex_init(doubleLock, NULL);
 
         /* Initialize threads and run them */
         int threadCount = argc - 2;
@@ -114,13 +121,22 @@ void *perform_ops(void *arg) {
         fscanf(fp, "%d", &rightOperand);
         endOfLine = fgetc(fp);
 
-        /* Atomically perform operation */
+        /*
+         *  Atomically perform operation.
+         *  Locks are taken at within each case statement in an effort to
+         *  maximize concurrency. Lock are only taken when the operations being
+         *  performed involve the shared data. 
+         */
         if(endOfLine != EOF) {
             switch(currentOp) {
                 case '+' :
                     if(rightOpIsIndex) {
+                        //Double lock is taken to ensure no dead lock when
+                        //taking two locks
+                        pthread_mutex_lock(doubleLock);
                         pthread_mutex_lock(convArray[leftOperandi].lock);
                         pthread_mutex_lock(convArray[rightOperand].lock);
+                        pthread_mutex_unlock(doubleLock);
 
                         convArray[leftOperandi].value += convArray[rightOperand].value;
 
@@ -137,8 +153,10 @@ void *perform_ops(void *arg) {
                     break;
                 case '-' :
                     if(rightOpIsIndex) {
+                        pthread_mutex_lock(doubleLock);
                         pthread_mutex_lock(convArray[leftOperandi].lock);
                         pthread_mutex_lock(convArray[rightOperand].lock);
+                        pthread_mutex_unlock(doubleLock);
 
                         convArray[leftOperandi].value -= convArray[rightOperand].value;
 
@@ -155,8 +173,10 @@ void *perform_ops(void *arg) {
                     break;
                 case '*' :
                     if(rightOpIsIndex) {
+                        pthread_mutex_lock(doubleLock);
                         pthread_mutex_lock(convArray[leftOperandi].lock);
                         pthread_mutex_lock(convArray[rightOperand].lock);
+                        pthread_mutex_unlock(doubleLock);
 
                         convArray[leftOperandi].value *= convArray[rightOperand].value;
 
@@ -173,8 +193,10 @@ void *perform_ops(void *arg) {
                     break;
                 case '/' :
                     if(rightOpIsIndex) {
+                        pthread_mutex_lock(doubleLock);
                         pthread_mutex_lock(convArray[leftOperandi].lock);
                         pthread_mutex_lock(convArray[rightOperand].lock);
+                        pthread_mutex_unlock(doubleLock);
 
                         if(convArray[rightOperand].value != 0)
                             convArray[leftOperandi].value /= convArray[rightOperand].value;
@@ -197,14 +219,16 @@ void *perform_ops(void *arg) {
                 case '^' :
                     expBase = 0;
                     if(rightOpIsIndex) {
+                        pthread_mutex_lock(doubleLock);
                         pthread_mutex_lock(convArray[leftOperandi].lock);
                         pthread_mutex_lock(convArray[rightOperand].lock);
+                        pthread_mutex_unlock(doubleLock);
 
                         if(convArray[leftOperandi].value != 0 && convArray[rightOperand].value != 0) {
                             expBase = convArray[leftOperandi].value;
                             for(i = 1; i < abs(convArray[rightOperand].value); i++)
                                 convArray[leftOperandi].value *= expBase;
-                            //Check for negative exponent and 0 exponent
+                            //Check for negative exponent, division by 0, and 0 exponent
                             if(convArray[rightOperand].value < 0 && convArray[leftOperandi].value != 0)
                                 convArray[leftOperandi].value = 1/convArray[leftOperandi].value;
                             else if(convArray[leftOperandi].value == 0)
@@ -225,7 +249,7 @@ void *perform_ops(void *arg) {
                             expBase = convArray[leftOperandi].value;
                             for(i = 1; i < abs(rightOperand); i++)
                                 convArray[leftOperandi].value *= expBase;
-                            //Check for negative exponent and 0 exponent
+                            //Check for negative exponent, division by 0, and 0 exponent 
                             if(rightOperand < 0 && convArray[leftOperandi].value != 0)
                                 convArray[leftOperandi].value = 1/convArray[leftOperandi].value;
                             else if(convArray[leftOperandi].value == 0)
