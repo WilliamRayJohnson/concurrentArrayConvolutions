@@ -1,8 +1,9 @@
+
 /*
  * A concurrent program that perform arithmetic operations on an array of
  * a given size whilst maintaining atomicity on each element of the array.
  */
-
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -12,9 +13,11 @@
 #define THREAD_JOIN_FAILED -2
 #define MAX_OP_SIZE 5
 
+
 typedef struct atomic_i {
     int value;
     pthread_mutex_t *lock;
+    pthread_mutexattr_t *attr;
 } Atomic_Int;
 
 typedef struct thread_input {
@@ -39,7 +42,10 @@ int main(int argc, char *argv[]) {
         for (i = 0; i < convArraySize; i++) {
             convArray[i].value = 0;
             convArray[i].lock = (pthread_mutex_t *) malloc(sizeof(pthread_mutex_t));
-            pthread_mutex_init(convArray[i].lock, NULL);
+            convArray[i].attr = (pthread_mutexattr_t *) malloc(sizeof(pthread_mutexattr_t));
+            pthread_mutexattr_init(convArray[i].attr);
+            pthread_mutexattr_settype(convArray[i].attr, PTHREAD_MUTEX_RECURSIVE);
+            pthread_mutex_init(convArray[i].lock, convArray[i].attr);
         }
 
         /* Initialize threads and run them */
@@ -82,7 +88,6 @@ int main(int argc, char *argv[]) {
  */
 void *perform_ops(void *arg) {
     Conv_Input *opsData = (Conv_Input *) arg;
-    printf("Thread %d now processing %s\n", opsData->thread_id, opsData->opsFile);
 
     FILE *fp;
     fp = fopen(opsData->opsFile, "r");
@@ -93,6 +98,7 @@ void *perform_ops(void *arg) {
     char rightOpCheck;
     bool rightOpIsIndex = false;
     int i;
+    int expBase;
     do {
         i = 0;
         rightOpIsIndex = false;
@@ -116,27 +122,122 @@ void *perform_ops(void *arg) {
                         pthread_mutex_lock(convArray[leftOperandi].lock);
                         pthread_mutex_lock(convArray[rightOperand].lock);
 
+                        convArray[leftOperandi].value += convArray[rightOperand].value;
+
                         pthread_mutex_unlock(convArray[rightOperand].lock);
                         pthread_mutex_unlock(convArray[leftOperandi].lock);
                     }
                     else {
                         pthread_mutex_lock(convArray[leftOperandi].lock);
 
+                        convArray[leftOperandi].value += rightOperand;
+
                         pthread_mutex_unlock(convArray[leftOperandi].lock);
                     }
-                    printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
                     break;
                 case '-' :
-                    printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
+                    if(rightOpIsIndex) {
+                        pthread_mutex_lock(convArray[leftOperandi].lock);
+                        pthread_mutex_lock(convArray[rightOperand].lock);
+
+                        convArray[leftOperandi].value -= convArray[rightOperand].value;
+
+                        pthread_mutex_unlock(convArray[rightOperand].lock);
+                        pthread_mutex_unlock(convArray[leftOperandi].lock);
+                    }
+                    else {
+                        pthread_mutex_lock(convArray[leftOperandi].lock);
+
+                        convArray[leftOperandi].value -= rightOperand;
+
+                        pthread_mutex_unlock(convArray[leftOperandi].lock);
+                    }
                     break;
                 case '*' :
-                    printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
+                    if(rightOpIsIndex) {
+                        pthread_mutex_lock(convArray[leftOperandi].lock);
+                        pthread_mutex_lock(convArray[rightOperand].lock);
+
+                        convArray[leftOperandi].value *= convArray[rightOperand].value;
+
+                        pthread_mutex_unlock(convArray[rightOperand].lock);
+                        pthread_mutex_unlock(convArray[leftOperandi].lock);
+                    }
+                    else {
+                        pthread_mutex_lock(convArray[leftOperandi].lock);
+
+                        convArray[leftOperandi].value *= rightOperand;
+
+                        pthread_mutex_unlock(convArray[leftOperandi].lock);
+                    }
                     break;
                 case '/' :
-                    printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
+                    if(rightOpIsIndex) {
+                        pthread_mutex_lock(convArray[leftOperandi].lock);
+                        pthread_mutex_lock(convArray[rightOperand].lock);
+
+                        if(convArray[rightOperand].value != 0)
+                            convArray[leftOperandi].value /= convArray[rightOperand].value;
+                        else
+                            printf("Thread %d performed an illegal OP: division by 0\n", opsData->thread_id);
+                        pthread_mutex_unlock(convArray[rightOperand].lock);
+                        pthread_mutex_unlock(convArray[leftOperandi].lock);
+                    }
+                    else {
+                        pthread_mutex_lock(convArray[leftOperandi].lock);
+
+                        if(rightOperand != 0)
+                            convArray[leftOperandi].value /= rightOperand;
+                        else
+                            printf("Thread %d performed an illegal OP: division by 0\n", opsData->thread_id);
+
+                        pthread_mutex_unlock(convArray[leftOperandi].lock);
+                    }
                     break;
                 case '^' :
-                    printf("%d%c%d\n", leftOperandi, currentOp, rightOperand);
+                    expBase = 0;
+                    if(rightOpIsIndex) {
+                        pthread_mutex_lock(convArray[leftOperandi].lock);
+                        pthread_mutex_lock(convArray[rightOperand].lock);
+
+                        if(convArray[leftOperandi].value != 0 && convArray[rightOperand].value != 0) {
+                            expBase = convArray[leftOperandi].value;
+                            for(i = 1; i < abs(convArray[rightOperand].value); i++)
+                                convArray[leftOperandi].value *= expBase;
+                            //Check for negative exponent and 0 exponent
+                            if(convArray[rightOperand].value < 0 && convArray[leftOperandi].value != 0)
+                                convArray[leftOperandi].value = 1/convArray[leftOperandi].value;
+                            else if(convArray[leftOperandi].value == 0)
+                                printf("Thread %d performed an illegal OP: division by 0\n", opsData->thread_id);
+                            else if(convArray[rightOperand].value == 0)
+                                convArray[leftOperandi].value = 1;
+                        }
+                        else
+                            printf("Thread %d performed an illegal OP: 0^0\n", opsData->thread_id);
+
+                        pthread_mutex_unlock(convArray[rightOperand].lock);
+                        pthread_mutex_unlock(convArray[leftOperandi].lock);
+                    }
+                    else {
+                        pthread_mutex_lock(convArray[leftOperandi].lock);
+
+                        if(convArray[leftOperandi].value != 0 && rightOperand != 0) {
+                            expBase = convArray[leftOperandi].value;
+                            for(i = 1; i < abs(rightOperand); i++)
+                                convArray[leftOperandi].value *= expBase;
+                            //Check for negative exponent and 0 exponent
+                            if(rightOperand < 0 && convArray[leftOperandi].value != 0)
+                                convArray[leftOperandi].value = 1/convArray[leftOperandi].value;
+                            else if(convArray[leftOperandi].value == 0)
+                                printf("Thread %d performed an illegal OP: division by 0\n", opsData->thread_id);
+                            else if(rightOperand == 0)
+                                convArray[leftOperandi].value = 1;
+                        }
+                        else
+                            printf("Thread %d performed an illegal OP: 0^0\n", opsData->thread_id);
+
+                        pthread_mutex_unlock(convArray[leftOperandi].lock);
+                    }
                     break;
                 default :
                     printf("Op not considered: %c\n", currentOp);
